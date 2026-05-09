@@ -13,7 +13,7 @@
   },
   "homepage": "https://github.com/wdd817/thinkingdata-mcp#readme",
   "bin": {
-    "thinkingdata-mcp": "./dist/index.js"
+    "thinkingdata-mcp": "dist/index.js"
   },
   "files": [
     "dist",
