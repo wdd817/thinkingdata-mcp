@@ -98,7 +98,7 @@ const EventPartDateFields = {
 
 const server = new McpServer({
   name: "thinkingdata-mcp",
-  version: "0.1.1",
+  version: "0.1.2",
 });
 
 server.registerResource(

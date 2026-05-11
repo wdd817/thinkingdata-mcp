@@ -23,7 +23,7 @@ MCP client 配置示例：
       "env": {
         "THINKINGDATA_BASE_URL": "http://ta2:8992",
         "THINKINGDATA_API_SECRET": "your-api-secret",
-        "THINKINGDATA_PROJECT_ID": "102"
+        "THINKINGDATA_PROJECT_ID": "your-project-id"
       }
     }
   }
@@ -49,7 +49,7 @@ node dist/index.js
 
 - `THINKINGDATA_BASE_URL`: TE Open API base URL，例如 `http://ta2:8992`，也支持 `https://example.com/te/` 这类路径前缀。
 - `THINKINGDATA_API_SECRET`: Open API 查询密钥，也可用 `THINKINGDATA_TOKEN`。密钥可按官方文档使用 `ta-tool generate_root_secret` 或 `ta-tool generate_api_secret -appid ...` 生成。
-- `THINKINGDATA_PROJECT_ID`: TE 项目 ID。SQL helper 会用它拼接表名：事件表 `v_event_<PROJECT_ID>`，用户表 `v_user_<PROJECT_ID>`。
+- `THINKINGDATA_PROJECT_ID`: TE 项目 ID，请替换为你自己的数字项目 ID。SQL helper 会用它拼接表名：事件表 `v_event_<PROJECT_ID>`，用户表 `v_user_<PROJECT_ID>`。
 
 ## SQL 表名和日期规则
 
@@ -134,7 +134,7 @@ SQL tools 的返回值里会包含 `preparedSql`，用于查看最终发送给 T
 {
   "endpointName": "event_analyze",
   "body": {
-    "projectId": 102,
+    "projectId": "<your-project-id>",
     "events": []
   }
 }
@@ -146,7 +146,7 @@ SQL tools 的返回值里会包含 `preparedSql`，用于查看最终发送给 T
 {
   "endpointName": "list_event_meta",
   "query": {
-    "projectId": 102
+    "projectId": "<your-project-id>"
   }
 }
 ```
