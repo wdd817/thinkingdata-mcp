@@ -9,6 +9,7 @@ import {
   searchEndpointCatalog,
 } from "./catalog.js";
 import { callThinkingData, type BodyMode } from "./client.js";
+import { prepareThinkingDataSql } from "./sql.js";
 
 const JsonValue: z.ZodType<unknown> = z.lazy(() =>
   z.union([
@@ -63,9 +64,41 @@ const CommonConnectionFields = {
     .describe("Maximum response bytes returned to the MCP client. Defaults to 5 MB."),
 };
 
+const ProjectFields = {
+  projectId: z
+    .union([z.string(), z.number().int().nonnegative()])
+    .optional()
+    .describe(
+      "ThinkingData project ID. Defaults to THINKINGDATA_PROJECT_ID or PROJECT_ID. Used to build v_event_<id> and v_user_<id> table names.",
+    ),
+};
+
+const EventPartDateFields = {
+  eventDateStart: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .describe(
+      "YYYY-MM-DD start date used when an event-table SQL query does not already filter $part_date.",
+    ),
+  eventDateEnd: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional()
+    .describe(
+      "YYYY-MM-DD end date used when an event-table SQL query does not already filter $part_date. Defaults to today.",
+    ),
+  defaultEventPartDate: z
+    .boolean()
+    .optional()
+    .describe(
+      "Defaults to true. When true, event-table SQL without a $part_date filter is limited to the latest 7 days.",
+    ),
+};
+
 const server = new McpServer({
   name: "thinkingdata-mcp",
-  version: "0.1.0",
+  version: "0.1.1",
 });
 
 server.registerResource(
@@ -163,26 +196,49 @@ server.registerTool(
     description:
       "Run the documented synchronous /querySql custom SQL API with form-encoded parameters.",
     inputSchema: {
-      sql: z.string(),
+      sql: z
+        .string()
+        .describe(
+          "SQL. Supports {{event_table}}, {{user_table}}, and {{project_id}} placeholders. Bare v_event/v_user are expanded when projectId is configured.",
+        ),
       format: z.enum(["json", "csv", "tsv", "json_object"]).optional(),
       timeoutSeconds: z.number().int().positive().optional(),
       responseFormat: z.enum(["auto", "json", "text", "base64"]).optional(),
+      ...ProjectFields,
+      ...EventPartDateFields,
       ...CommonConnectionFields,
     },
   },
-  async ({ sql, format, timeoutSeconds, responseFormat, ...connection }) =>
-    asJson(
-      await callThinkingData({
-        endpointName: "sql_sync_query",
-        form: {
-          sql,
-          format,
-          timeoutSeconds,
-        },
-        responseFormat,
-        ...connection,
-      }),
-    ),
+  async ({
+    sql,
+    format,
+    timeoutSeconds,
+    responseFormat,
+    projectId,
+    eventDateStart,
+    eventDateEnd,
+    defaultEventPartDate,
+    ...connection
+  }) => {
+    const prepared = prepareThinkingDataSql(sql, {
+      projectId,
+      eventDateStart,
+      eventDateEnd,
+      defaultEventPartDate,
+    });
+    const response = await callThinkingData({
+      endpointName: "sql_sync_query",
+      form: {
+        sql: prepared.sql,
+        format,
+        timeoutSeconds,
+      },
+      responseFormat,
+      ...connection,
+    });
+
+    return asJson({ preparedSql: prepared, response });
+  },
 );
 
 server.registerTool(
@@ -192,26 +248,49 @@ server.registerTool(
     description:
       "Submit an async SQL task through /open/submit-sql. Use thinkingdata_sql_task_info and thinkingdata_sql_result_page afterward.",
     inputSchema: {
-      sql: z.string(),
+      sql: z
+        .string()
+        .describe(
+          "SQL. Supports {{event_table}}, {{user_table}}, and {{project_id}} placeholders. Bare v_event/v_user are expanded when projectId is configured.",
+        ),
       format: z.enum(["json", "csv", "tsv", "json_object"]).optional(),
       timeoutSeconds: z.number().int().positive().optional(),
       responseFormat: z.enum(["auto", "json", "text", "base64"]).optional(),
+      ...ProjectFields,
+      ...EventPartDateFields,
       ...CommonConnectionFields,
     },
   },
-  async ({ sql, format, timeoutSeconds, responseFormat, ...connection }) =>
-    asJson(
-      await callThinkingData({
-        endpointName: "sql_submit",
-        form: {
-          sql,
-          format,
-          timeoutSeconds,
-        },
-        responseFormat,
-        ...connection,
-      }),
-    ),
+  async ({
+    sql,
+    format,
+    timeoutSeconds,
+    responseFormat,
+    projectId,
+    eventDateStart,
+    eventDateEnd,
+    defaultEventPartDate,
+    ...connection
+  }) => {
+    const prepared = prepareThinkingDataSql(sql, {
+      projectId,
+      eventDateStart,
+      eventDateEnd,
+      defaultEventPartDate,
+    });
+    const response = await callThinkingData({
+      endpointName: "sql_submit",
+      form: {
+        sql: prepared.sql,
+        format,
+        timeoutSeconds,
+      },
+      responseFormat,
+      ...connection,
+    });
+
+    return asJson({ preparedSql: prepared, response });
+  },
 );
 
 server.registerTool(
@@ -379,9 +458,10 @@ function usageNotes() {
     "",
     "Set `THINKINGDATA_BASE_URL` to the TE Open API base URL, for example `http://ta2:8992`.",
     "Set `THINKINGDATA_API_SECRET` to the Open API query secret generated by `ta-tool generate_root_secret` or `ta-tool generate_api_secret -appid ...`.",
+    "Set `THINKINGDATA_PROJECT_ID` to the TE project ID so SQL helpers can expand `{{event_table}}` to `v_event_<id>` and `{{user_table}}` to `v_user_<id>`.",
     "",
     "Use `thinkingdata_catalog` to find an endpoint name, then call `thinkingdata_request` with that `endpointName`.",
-    "For SQL, use `thinkingdata_sql_query` for `/querySql`, or `thinkingdata_sql_submit` plus `thinkingdata_sql_task_info` and `thinkingdata_sql_result_page` for async queries.",
+    "For SQL, use `thinkingdata_sql_query` for `/querySql`, or `thinkingdata_sql_submit` plus `thinkingdata_sql_task_info` and `thinkingdata_sql_result_page` for async queries. Event-table SQL must filter `$part_date`; if it does not, the SQL helpers add a latest-7-days filter automatically.",
     "",
     "The server redacts `token` in returned URLs, but never put real secrets in prompts unless your MCP client treats tool arguments securely.",
   ].join("\n");
